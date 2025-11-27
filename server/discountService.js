@@ -139,10 +139,10 @@ async function getAllDiscountCodes(shopDomain) {
         headers: {
           'X-Shopify-Access-Token': access_token,
         },
-        params: {
+          params: {
           limit: 250,
           status: 'any',
-          fields: 'id,name,financial_status,fulfillment_status,created_at,discount_codes,customer,total_line_items_price,subtotal_price',
+          fields: 'id,name,financial_status,fulfillment_status,created_at,discount_codes,customer,total_line_items_price,subtotal_price,total_price',
         },
       });
       ordersWithDiscounts = ordersResponse.data.orders || [];
@@ -171,6 +171,7 @@ async function getAllDiscountCodes(shopDomain) {
               last_name: order.customer.last_name || '',
             } : null,
             total_before_discount: order.total_line_items_price || order.subtotal_price || '0.00',
+            amount_paid: order.total_price || order.subtotal_price || '0.00', // Total after discount
           });
         });
       }
@@ -217,6 +218,9 @@ async function getAllDiscountCodes(shopDomain) {
             // Get total before discount
             totalBill = latestOrder.total_before_discount || null;
             
+            // Get amount actually paid (after discount)
+            const amountPaid = latestOrder.amount_paid || null;
+            
             // Determine status based on fulfillment
             if (latestOrder.fulfillment_status === 'fulfilled') {
               status = 'Order Delivered';
@@ -239,6 +243,7 @@ async function getAllDiscountCodes(shopDomain) {
             order_id: orderId,
             ordered_by: orderedBy,
             total_bill: totalBill,
+            amount_paid: orders.length > 0 ? orders[orders.length - 1].amount_paid : null,
             usage_count: usageCount,
             usage_limit: usageLimit,
             created_at: discountCode.created_at,

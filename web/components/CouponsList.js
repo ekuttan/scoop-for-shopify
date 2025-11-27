@@ -70,6 +70,7 @@ export default function CouponsList({ shop, onClose }) {
                   <th style={styles.th}>Order ID</th>
                   <th style={styles.th}>Ordered by</th>
                   <th style={styles.th}>Total bill</th>
+                  <th style={styles.th}>Amount paid</th>
                   <th style={styles.th}>Status</th>
                 </tr>
               </thead>
@@ -81,6 +82,9 @@ export default function CouponsList({ shop, onClose }) {
                     <td style={styles.td}>{discount.ordered_by || '-'}</td>
                     <td style={styles.td}>
                       {discount.total_bill ? `₹${parseFloat(discount.total_bill).toFixed(2)}` : '-'}
+                    </td>
+                    <td style={styles.td}>
+                      {discount.amount_paid ? `₹${parseFloat(discount.amount_paid).toFixed(2)}` : '-'}
                     </td>
                     <td style={styles.td}>
                       <span
@@ -118,7 +122,7 @@ const styles = {
     position: 'fixed',
     top: 0,
     right: 0,
-    width: '800px',
+    width: '1200px',
     height: '100vh',
     backgroundColor: '#fff',
     borderLeft: '1px solid #ddd',
