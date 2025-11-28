@@ -171,7 +171,7 @@ export default function Home() {
       {loading && products.length === 0 ? (
         <div style={styles.loading}>Loading products...</div>
       ) : (
-        <>
+        <div style={styles.productsWrapper}>
           <ProductList products={products} />
           {hasMore && !loading && (
             <div style={styles.loadMoreContainer}>
@@ -183,7 +183,7 @@ export default function Home() {
           {loading && products.length > 0 && (
             <div style={styles.loading}>Loading more...</div>
           )}
-        </>
+        </div>
       )}
 
       <div style={styles.footer}>
@@ -275,6 +275,10 @@ const styles = {
     backgroundColor: '#fff',
     padding: '40px 20px',
     paddingBottom: '120px',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   card: {
     backgroundColor: '#fff',
@@ -388,6 +392,13 @@ const styles = {
     cursor: 'pointer',
     fontWeight: '400',
     letterSpacing: '0.5px',
+  },
+  productsWrapper: {
+    width: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 };
 

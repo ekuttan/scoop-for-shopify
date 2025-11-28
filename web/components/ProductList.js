@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import JsonViewer from './JsonViewer';
 
 export default function ProductList({ products }) {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [hoveredImageId, setHoveredImageId] = useState(null);
+  const [hoveredCardId, setHoveredCardId] = useState(null);
 
   if (products.length === 0) {
     return (
@@ -48,6 +50,14 @@ export default function ProductList({ products }) {
               key={product.id}
               style={styles.card}
               onClick={() => handleProductClick(product)}
+              onMouseEnter={() => {
+                setHoveredCardId(product.id);
+                setHoveredImageId(product.id);
+              }}
+              onMouseLeave={() => {
+                setHoveredCardId(null);
+                setHoveredImageId(null);
+              }}
             >
               <div style={styles.imageContainer}>
                 {product.images && product.images.length > 0 && (
@@ -58,12 +68,15 @@ export default function ProductList({ products }) {
                       ...styles.image,
                       transform: hoveredImageId === product.id ? 'scale(1.1)' : 'scale(1)',
                     }}
-                    onMouseEnter={() => setHoveredImageId(product.id)}
-                    onMouseLeave={() => setHoveredImageId(null)}
                   />
                 )}
               </div>
-              <div style={styles.content}>
+              <div 
+                style={{
+                  ...styles.content,
+                  opacity: hoveredCardId === product.id ? 1 : 0,
+                }}
+              >
                 <h3 style={styles.title}>{toSentenceCase(product.title)}</h3>
                 {priceInfo && (
                   <div style={styles.priceContainer}>
@@ -84,14 +97,9 @@ export default function ProductList({ products }) {
       </div>
       {selectedProduct && (
         <div style={styles.sidebar}>
-          <div style={styles.sidebarHeader}>
-            <h2 style={styles.sidebarTitle}>Product Details</h2>
-            <button style={styles.closeButton} onClick={handleCloseSidebar}>×</button>
-          </div>
           <div style={styles.sidebarContent}>
-            <pre style={styles.jsonContent}>
-              {JSON.stringify(selectedProduct, null, 2)}
-            </pre>
+            <button style={styles.closeButton} onClick={handleCloseSidebar}>×</button>
+            <JsonViewer data={selectedProduct} />
           </div>
         </div>
       )}
@@ -106,6 +114,9 @@ const styles = {
   container: {
     maxWidth: '1200px',
     margin: '0 auto',
+    display: 'flex',
+    justifyContent: 'center',
+    width: '100%',
   },
   grid: {
     display: 'grid',
@@ -113,6 +124,9 @@ const styles = {
     gap: '30px',
     padding: '0 20px',
     justifyContent: 'center',
+    placeItems: 'center',
+    width: '100%',
+    maxWidth: '100%',
   },
   sidebarOverlay: {
     position: 'fixed',
@@ -127,7 +141,7 @@ const styles = {
     position: 'fixed',
     top: 0,
     right: 0,
-    width: '400px',
+    width: '600px',
     height: '100vh',
     backgroundColor: '#fff',
     borderLeft: '1px solid #ddd',
@@ -136,21 +150,10 @@ const styles = {
     flexDirection: 'column',
     boxShadow: '-2px 0 8px rgba(0,0,0,0.1)',
   },
-  sidebarHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '20px',
-    borderBottom: '1px solid #ddd',
-  },
-  sidebarTitle: {
-    fontSize: '18px',
-    fontWeight: '400',
-    margin: 0,
-    color: '#000',
-    letterSpacing: '0.5px',
-  },
   closeButton: {
+    position: 'absolute',
+    top: '20px',
+    right: '20px',
     background: 'none',
     border: 'none',
     fontSize: '32px',
@@ -163,25 +166,19 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 1001,
   },
   sidebarContent: {
     flex: 1,
     overflow: 'auto',
-    padding: '20px',
-  },
-  jsonContent: {
-    margin: 0,
-    fontSize: '12px',
-    fontFamily: 'monospace',
-    color: '#333',
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
-    lineHeight: '1.6',
+    padding: '40px',
   },
   card: {
     display: 'flex',
     flexDirection: 'column',
     cursor: 'pointer',
+    width: '100%',
+    maxWidth: '250px',
   },
   imageContainer: {
     position: 'relative',
@@ -202,6 +199,8 @@ const styles = {
   content: {
     padding: '15px 0 0 0',
     textAlign: 'center',
+    opacity: 0,
+    transition: 'opacity 0.3s ease',
   },
   title: {
     fontSize: '14px',
