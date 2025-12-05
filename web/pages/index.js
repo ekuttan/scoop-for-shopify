@@ -4,7 +4,7 @@ import axios from 'axios';
 import ProductList from '../components/ProductList';
 import CouponPopup from '../components/CouponPopup';
 import StoreInfoSidebar from '../components/StoreInfoSidebar';
-import CouponsList from '../components/CouponsList';
+import OrdersList from '../components/OrdersList';
 
 export default function Home() {
   const router = useRouter();
@@ -17,7 +17,7 @@ export default function Home() {
   const [hasMore, setHasMore] = useState(true);
   const [showCouponPopup, setShowCouponPopup] = useState(false);
   const [showStoreInfo, setShowStoreInfo] = useState(false);
-  const [showCouponsList, setShowCouponsList] = useState(false);
+  const [showOrdersList, setShowOrdersList] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
 
   // Check for installed shop on mount
@@ -81,7 +81,7 @@ export default function Home() {
     }
   }, [installedShop]);
 
-  const handleInstall = (e) => {
+  const handleInstall = async (e) => {
     e.preventDefault();
     if (!shop) {
       alert('Please enter a shop domain');
@@ -89,11 +89,48 @@ export default function Home() {
     }
 
     let shopDomain = shop.trim();
-    if (!shopDomain.endsWith('.myshopify.com')) {
-      shopDomain = `${shopDomain}.myshopify.com`;
+    
+    // Remove protocol if present
+    if (shopDomain.startsWith('http://') || shopDomain.startsWith('https://')) {
+      shopDomain = shopDomain.replace(/^https?:\/\//, '');
     }
-
-    window.location.href = `/auth?shop=${encodeURIComponent(shopDomain)}`;
+    // Remove trailing slash
+    shopDomain = shopDomain.replace(/\/$/, '');
+    
+    // Check if it's already a .myshopify.com domain
+    if (shopDomain.endsWith('.myshopify.com')) {
+      // Valid Shopify admin domain - proceed directly
+      window.location.href = `/auth?shop=${encodeURIComponent(shopDomain)}`;
+    } else {
+      // Custom domain - try to resolve it to myshopify.com domain
+      try {
+        // Try to fetch shop.json from the custom domain
+        // This endpoint may be publicly accessible and returns shop info including myshopify.com domain
+        const response = await axios.get(`https://${shopDomain}/admin/api/2024-10/shop.json`, {
+          timeout: 5000,
+          validateStatus: (status) => status < 500, // Don't throw on 401/403, but throw on 500+
+        });
+        
+        if (response.status === 200 && response.data?.shop?.myshopify_domain) {
+          // Successfully resolved - use the myshopify.com domain
+          const myshopifyDomain = response.data.shop.myshopify_domain;
+          window.location.href = `/auth?shop=${encodeURIComponent(myshopifyDomain)}`;
+          return;
+        }
+      } catch (error) {
+        // If API call fails or doesn't return the expected data, continue to error message
+        console.log('Could not resolve custom domain:', error.message);
+      }
+      
+      // If resolution fails, show helpful error
+      alert(
+        'Could not resolve your custom domain to a Shopify store.\n\n' +
+        'Please use your Shopify admin domain instead (e.g., yourshop.myshopify.com).\n\n' +
+        'To find your admin domain:\n' +
+        '1. Log into your Shopify admin panel\n' +
+        '2. Check the URL - it will be: yourshop.myshopify.com/admin'
+      );
+    }
   };
 
   const handleLoadMore = () => {
@@ -202,7 +239,7 @@ export default function Home() {
             Generate Coupon Code
           </button>
           <button
-            onClick={() => setShowCouponsList(true)}
+            onClick={() => setShowOrdersList(true)}
             style={styles.footerButton}
             onMouseEnter={(e) => {
               e.currentTarget.style.textDecoration = 'underline';
@@ -212,7 +249,7 @@ export default function Home() {
               e.currentTarget.style.textDecoration = 'none';
             }}
           >
-            All Coupons
+            All Orders
           </button>
           <button
             onClick={handleLogout}
@@ -259,10 +296,10 @@ export default function Home() {
         />
       )}
 
-      {showCouponsList && (
-        <CouponsList
+      {showOrdersList && (
+        <OrdersList
           shop={installedShop}
-          onClose={() => setShowCouponsList(false)}
+          onClose={() => setShowOrdersList(false)}
         />
       )}
     </div>

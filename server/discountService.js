@@ -241,6 +241,7 @@ async function getAllDiscountCodes(shopDomain) {
             price_rule_id: priceRule.id,
             status: status,
             order_id: orderId,
+            shopify_order_id: orders.length > 0 ? orders[orders.length - 1].id : null, // Shopify numeric order ID
             ordered_by: orderedBy,
             total_bill: totalBill,
             amount_paid: orders.length > 0 ? orders[orders.length - 1].amount_paid : null,

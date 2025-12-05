@@ -6,6 +6,7 @@ const path = require('path');
 const oauthRoutes = require('./oauth');
 const productRoutes = require('./productRoutes');
 const discountRoutes = require('./discountRoutes');
+const orderRoutes = require('./orderRoutes');
 const { initDatabase, getAllShops, deleteShop, getShop } = require('./database');
 
 const app = express();
@@ -26,6 +27,7 @@ initDatabase();
 app.use('/auth', oauthRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/discounts', discountRoutes);
+app.use('/api/orders', orderRoutes);
 
 // Get installed shops
 app.get('/api/shops', async (req, res) => {

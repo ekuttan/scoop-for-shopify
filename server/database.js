@@ -84,9 +84,34 @@ function initDatabase() {
               if (alterErr && !alterErr.message.includes('duplicate column name')) {
                 console.error('Error adding shop_data column:', alterErr);
               }
-              console.log('Database initialized successfully');
-              resolve();
-              db.close();
+              
+              // Create orders_campaign table for tracking campaign status
+              db.run(
+                `CREATE TABLE IF NOT EXISTS orders_campaign (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  shop_domain TEXT NOT NULL,
+                  shopify_order_id TEXT NOT NULL,
+                  discount_code TEXT,
+                  campaign_status TEXT DEFAULT NULL,
+                  refund_amount TEXT,
+                  refund_transaction_id TEXT,
+                  refunded_at DATETIME,
+                  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                  UNIQUE(shop_domain, shopify_order_id)
+                )`,
+                (ordersErr) => {
+                  if (ordersErr) {
+                    console.error('Error creating orders_campaign table:', ordersErr);
+                    reject(ordersErr);
+                    db.close();
+                    return;
+                  }
+                  console.log('Database initialized successfully');
+                  resolve();
+                  db.close();
+                }
+              );
             }
           );
         }
@@ -209,11 +234,102 @@ function deleteShop(shopDomain) {
   });
 }
 
+/**
+ * Get campaign status for an order
+ */
+function getOrderCampaignStatus(shopDomain, shopifyOrderId) {
+  return new Promise((resolve, reject) => {
+    const db = new sqlite3.Database(DB_PATH);
+
+    db.get(
+      'SELECT * FROM orders_campaign WHERE shop_domain = ? AND shopify_order_id = ?',
+      [shopDomain, shopifyOrderId],
+      (err, row) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(row || null);
+        }
+        db.close();
+      }
+    );
+  });
+}
+
+/**
+ * Update or create order campaign status
+ */
+function updateOrderCampaignStatus(shopDomain, shopifyOrderId, campaignStatus, discountCode = null, refundAmount = null, refundTransactionId = null) {
+  return new Promise((resolve, reject) => {
+    const db = new sqlite3.Database(DB_PATH);
+
+    const refundedAt = campaignStatus === 'Campaign Completed' ? new Date().toISOString() : null;
+
+    db.run(
+      `INSERT INTO orders_campaign (shop_domain, shopify_order_id, discount_code, campaign_status, refund_amount, refund_transaction_id, refunded_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(shop_domain, shopify_order_id) DO UPDATE SET
+         campaign_status = ?,
+         refund_amount = COALESCE(?, refund_amount),
+         refund_transaction_id = COALESCE(?, refund_transaction_id),
+         refunded_at = COALESCE(?, refunded_at),
+         updated_at = CURRENT_TIMESTAMP`,
+      [
+        shopDomain,
+        shopifyOrderId,
+        discountCode,
+        campaignStatus,
+        refundAmount,
+        refundTransactionId,
+        refundedAt,
+        campaignStatus,
+        refundAmount,
+        refundTransactionId,
+        refundedAt,
+      ],
+      function(err) {
+        if (err) {
+          console.error('Error updating order campaign status:', err);
+          reject(err);
+        } else {
+          resolve();
+        }
+        db.close();
+      }
+    );
+  });
+}
+
+/**
+ * Get all order campaign statuses for a shop
+ */
+function getAllOrderCampaignStatuses(shopDomain) {
+  return new Promise((resolve, reject) => {
+    const db = new sqlite3.Database(DB_PATH);
+
+    db.all(
+      'SELECT * FROM orders_campaign WHERE shop_domain = ?',
+      [shopDomain],
+      (err, rows) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(rows || []);
+        }
+        db.close();
+      }
+    );
+  });
+}
+
 module.exports = {
   initDatabase,
   saveShop,
   getShop,
   getAllShops,
   deleteShop,
+  getOrderCampaignStatus,
+  updateOrderCampaignStatus,
+  getAllOrderCampaignStatuses,
 };
 
