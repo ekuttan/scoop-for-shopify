@@ -96,6 +96,7 @@ function initDatabase() {
                   refund_amount TEXT,
                   refund_transaction_id TEXT,
                   refunded_at DATETIME,
+                  restock_status TEXT DEFAULT NULL,
                   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                   UNIQUE(shop_domain, shopify_order_id)
@@ -107,9 +108,20 @@ function initDatabase() {
                     db.close();
                     return;
                   }
-                  console.log('Database initialized successfully');
-                  resolve();
-                  db.close();
+                  
+                  // Add restock_status column if it doesn't exist (migration for existing databases)
+                  db.run(
+                    `ALTER TABLE orders_campaign ADD COLUMN restock_status TEXT DEFAULT NULL`,
+                    (alterRestockErr) => {
+                      // Ignore error if column already exists
+                      if (alterRestockErr && !alterRestockErr.message.includes('duplicate column name')) {
+                        console.error('Error adding restock_status column:', alterRestockErr);
+                      }
+                      console.log('Database initialized successfully');
+                      resolve();
+                      db.close();
+                    }
+                  );
                 }
               );
             }
@@ -259,20 +271,21 @@ function getOrderCampaignStatus(shopDomain, shopifyOrderId) {
 /**
  * Update or create order campaign status
  */
-function updateOrderCampaignStatus(shopDomain, shopifyOrderId, campaignStatus, discountCode = null, refundAmount = null, refundTransactionId = null) {
+function updateOrderCampaignStatus(shopDomain, shopifyOrderId, campaignStatus, discountCode = null, refundAmount = null, refundTransactionId = null, restockStatus = null) {
   return new Promise((resolve, reject) => {
     const db = new sqlite3.Database(DB_PATH);
 
     const refundedAt = campaignStatus === 'Campaign Completed' ? new Date().toISOString() : null;
 
     db.run(
-      `INSERT INTO orders_campaign (shop_domain, shopify_order_id, discount_code, campaign_status, refund_amount, refund_transaction_id, refunded_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `INSERT INTO orders_campaign (shop_domain, shopify_order_id, discount_code, campaign_status, refund_amount, refund_transaction_id, refunded_at, restock_status, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
        ON CONFLICT(shop_domain, shopify_order_id) DO UPDATE SET
-         campaign_status = ?,
+         campaign_status = COALESCE(?, campaign_status),
          refund_amount = COALESCE(?, refund_amount),
          refund_transaction_id = COALESCE(?, refund_transaction_id),
          refunded_at = COALESCE(?, refunded_at),
+         restock_status = COALESCE(?, restock_status),
          updated_at = CURRENT_TIMESTAMP`,
       [
         shopDomain,
@@ -282,10 +295,12 @@ function updateOrderCampaignStatus(shopDomain, shopifyOrderId, campaignStatus, d
         refundAmount,
         refundTransactionId,
         refundedAt,
+        restockStatus,
         campaignStatus,
         refundAmount,
         refundTransactionId,
         refundedAt,
+        restockStatus,
       ],
       function(err) {
         if (err) {

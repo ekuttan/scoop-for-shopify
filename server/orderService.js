@@ -29,23 +29,117 @@ async function getAllOrders(shopDomain) {
     const orderIdForLookup = dc.shopify_order_id ? dc.shopify_order_id.toString() : null;
     const campaignStatus = orderIdForLookup ? campaignStatusMap[orderIdForLookup] : null;
     
-    return {
-      ...dc,
-      id: dc.id,
-      shopify_order_id: dc.shopify_order_id || null,
-      campaign_status: campaignStatus ? campaignStatus.campaign_status : null,
-      refund_amount: campaignStatus ? campaignStatus.refund_amount : null,
-      refund_transaction_id: campaignStatus ? campaignStatus.refund_transaction_id : null,
-    };
+      return {
+        ...dc,
+        id: dc.id,
+        shopify_order_id: dc.shopify_order_id || null,
+        campaign_status: campaignStatus ? campaignStatus.campaign_status : null,
+        refund_amount: campaignStatus ? campaignStatus.refund_amount : null,
+        refund_transaction_id: campaignStatus ? campaignStatus.refund_transaction_id : null,
+        restock_status: campaignStatus ? campaignStatus.restock_status : null,
+      };
   });
 
   return orders;
 }
 
 /**
+ * Restock products from an order
+ */
+async function restockOrderProducts(shopDomain, shopifyOrderId, order) {
+  const shop = await getShop(shopDomain);
+  if (!shop) {
+    throw new Error('Shop not found. Please install the app first.');
+  }
+
+  const { access_token } = shop;
+
+  try {
+    // Get fulfillment location from the order
+    // Use the first fulfillment location, or get primary location if no fulfillments
+    let locationId = null;
+    
+    if (order.fulfillments && order.fulfillments.length > 0) {
+      locationId = order.fulfillments[0].location_id;
+    } else {
+      // If no fulfillments, get the primary location
+      const locationsUrl = `https://${shopDomain}/admin/api/2024-10/locations.json`;
+      const locationsResponse = await axios.get(locationsUrl, {
+        headers: {
+          'X-Shopify-Access-Token': access_token,
+        },
+      });
+      const locations = locationsResponse.data.locations || [];
+      if (locations.length > 0) {
+        locationId = locations[0].id;
+      }
+    }
+
+    if (!locationId) {
+      throw new Error('No location found for restocking');
+    }
+
+    // Restock each line item
+    const restockPromises = order.line_items.map(async (lineItem) => {
+      if (!lineItem.variant_id) {
+        console.warn(`Line item ${lineItem.id} has no variant_id, skipping restock`);
+        return;
+      }
+
+      // Get variant details to get inventory_item_id
+      const variantUrl = `https://${shopDomain}/admin/api/2024-10/variants/${lineItem.variant_id}.json`;
+      let variant;
+      try {
+        const variantResponse = await axios.get(variantUrl, {
+          headers: {
+            'X-Shopify-Access-Token': access_token,
+          },
+        });
+        variant = variantResponse.data.variant;
+      } catch (variantErr) {
+        console.error(`Error fetching variant ${lineItem.variant_id}:`, variantErr);
+        throw new Error(`Failed to fetch variant ${lineItem.variant_id}`);
+      }
+
+      if (!variant.inventory_item_id) {
+        console.warn(`Variant ${lineItem.variant_id} has no inventory_item_id, skipping restock`);
+        return;
+      }
+
+      // Adjust inventory level
+      const adjustUrl = `https://${shopDomain}/admin/api/2024-10/inventory_levels/adjust.json`;
+      const adjustData = {
+        location_id: locationId,
+        inventory_item_id: variant.inventory_item_id,
+        available_adjustment: lineItem.quantity, // Positive value to increase inventory
+      };
+
+      try {
+        await axios.post(adjustUrl, adjustData, {
+          headers: {
+            'X-Shopify-Access-Token': access_token,
+            'Content-Type': 'application/json',
+          },
+        });
+        console.log(`Restocked ${lineItem.quantity} units of variant ${lineItem.variant_id}`);
+      } catch (adjustErr) {
+        console.error(`Error adjusting inventory for variant ${lineItem.variant_id}:`, adjustErr.response?.data || adjustErr.message);
+        throw new Error(`Failed to restock variant ${lineItem.variant_id}`);
+      }
+    });
+
+    await Promise.all(restockPromises);
+    return { success: true, locationId };
+  } catch (error) {
+    console.error('Error restocking products:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
+/**
  * Mark order as campaign promise met and initiate refund
  */
-async function markCampaignPromiseMet(shopDomain, orderId, shopifyOrderId) {
+async function markCampaignPromiseMet(shopDomain, orderId, shopifyOrderId, shouldRestock = false) {
   const shop = await getShop(shopDomain);
   if (!shop) {
     throw new Error('Shop not found. Please install the app first.');
@@ -144,8 +238,51 @@ async function markCampaignPromiseMet(shopDomain, orderId, shopifyOrderId) {
       'Campaign Promise Met',
       order.discount_codes && order.discount_codes.length > 0 ? order.discount_codes[0].code : null,
       refundAmount.toString(),
-      refundTransactionId
+      refundTransactionId,
+      null // restock_status
     );
+
+    // If restock is requested, trigger it asynchronously
+    if (shouldRestock) {
+      // Set restock status to pending
+      await updateOrderCampaignStatus(
+        shopDomain,
+        shopifyOrderId.toString(),
+        null, // Don't change campaign_status
+        null,
+        null,
+        null,
+        'Restock Pending'
+      );
+
+      // Trigger restock asynchronously (don't await)
+      restockOrderProducts(shopDomain, shopifyOrderId, order)
+        .then(() => {
+          // Update restock status to success
+          return updateOrderCampaignStatus(
+            shopDomain,
+            shopifyOrderId.toString(),
+            null,
+            null,
+            null,
+            null,
+            'Restocked'
+          );
+        })
+        .catch((restockError) => {
+          console.error('Error in async restock:', restockError);
+          // Update restock status to failed
+          return updateOrderCampaignStatus(
+            shopDomain,
+            shopifyOrderId.toString(),
+            null,
+            null,
+            null,
+            null,
+            'Restock Failed'
+          );
+        });
+    }
 
     // Mark as completed immediately after successful refund
     // The refund is processed synchronously by Shopify API
@@ -155,7 +292,8 @@ async function markCampaignPromiseMet(shopDomain, orderId, shopifyOrderId) {
       'Campaign Completed',
       null,
       null,
-      null
+      null,
+      null // restock_status - don't change it if already set
     );
 
     return {
@@ -163,6 +301,7 @@ async function markCampaignPromiseMet(shopDomain, orderId, shopifyOrderId) {
       refundId: refundTransactionId,
       refundAmount,
       message: 'Refund initiated successfully',
+      restockInitiated: shouldRestock,
     };
   } catch (error) {
     console.error('Error creating refund:', error.response?.data || error.message);
@@ -175,7 +314,8 @@ async function markCampaignPromiseMet(shopDomain, orderId, shopifyOrderId) {
         'Campaign Promise Met',
         order.discount_codes && order.discount_codes.length > 0 ? order.discount_codes[0].code : null,
         refundAmount.toString(),
-        null
+        null,
+        null // restock_status
       );
     } catch (updateErr) {
       console.error('Error updating campaign status:', updateErr);

@@ -6,6 +6,7 @@ export default function OrdersList({ shop, onClose }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [processingRefund, setProcessingRefund] = useState(null);
+  const [restockCheckboxes, setRestockCheckboxes] = useState({});
 
   useEffect(() => {
     if (shop) {
@@ -30,7 +31,12 @@ export default function OrdersList({ shop, onClose }) {
   };
 
   const handleMarkCampaignPromiseMet = async (orderId, shopifyOrderId) => {
-    if (!confirm('Mark this order as campaign promise met and initiate refund?')) {
+    const shouldRestock = restockCheckboxes[orderId] || false;
+    const confirmMessage = shouldRestock
+      ? 'Mark this order as campaign promise met, initiate refund, and restock products?'
+      : 'Mark this order as campaign promise met and initiate refund?';
+    
+    if (!confirm(confirmMessage)) {
       return;
     }
 
@@ -40,12 +46,23 @@ export default function OrdersList({ shop, onClose }) {
         shop,
         orderId,
         shopifyOrderId,
+        shouldRestock,
+      });
+      
+      // Clear the checkbox state for this order
+      setRestockCheckboxes(prev => {
+        const newState = { ...prev };
+        delete newState[orderId];
+        return newState;
       });
       
       // Refresh orders list
       await fetchOrders();
       
-      alert('Order marked as campaign promise met. Refund initiated.');
+      const successMessage = shouldRestock
+        ? 'Order marked as campaign promise met. Refund initiated. Restock in progress.'
+        : 'Order marked as campaign promise met. Refund initiated.';
+      alert(successMessage);
     } catch (err) {
       console.error('Error marking campaign promise met:', err);
       alert(err.response?.data?.error || 'Failed to mark campaign promise met');
@@ -54,7 +71,24 @@ export default function OrdersList({ shop, onClose }) {
     }
   };
 
-  const getStatusColor = (status) => {
+  const handleRestockCheckboxChange = (orderId, checked) => {
+    setRestockCheckboxes(prev => ({
+      ...prev,
+      [orderId]: checked,
+    }));
+  };
+
+  const getStatusColor = (status, restockStatus) => {
+    // If there's a restock status, use restock colors
+    if (restockStatus) {
+      const restockColors = {
+        'Restock Pending': '#FFF9C4', // Light yellow
+        'Restocked': '#C8E6C9', // Light green
+        'Restock Failed': '#FFCDD2', // Light red
+      };
+      return restockColors[restockStatus] || '#F5F5F5';
+    }
+    
     const statusColors = {
       'Not Redeemed': '#F5F5F5', // Light grey
       'Redeemed': '#FFF3E0', // Light orange
@@ -65,7 +99,17 @@ export default function OrdersList({ shop, onClose }) {
     return statusColors[status] || '#F5F5F5'; // Default light gray
   };
 
-  const getStatusTextColor = (status) => {
+  const getStatusTextColor = (status, restockStatus) => {
+    // If there's a restock status, use restock colors
+    if (restockStatus) {
+      const restockTextColors = {
+        'Restock Pending': '#F57F17', // Dark yellow
+        'Restocked': '#2E7D32', // Dark green
+        'Restock Failed': '#C62828', // Dark red
+      };
+      return restockTextColors[restockStatus] || '#666';
+    }
+    
     const textColors = {
       'Not Redeemed': '#666', // Dark grey
       'Redeemed': '#F57C00', // Dark orange
@@ -74,6 +118,13 @@ export default function OrdersList({ shop, onClose }) {
       'Order Delivered': '#2E7D32', // Dark green
     };
     return textColors[status] || '#666'; // Default dark gray
+  };
+
+  const getDisplayStatus = (status, restockStatus) => {
+    if (restockStatus) {
+      return restockStatus;
+    }
+    return status;
   };
 
   const getCampaignStatusColor = (status) => {
@@ -134,11 +185,11 @@ export default function OrdersList({ shop, onClose }) {
                       <span
                         style={{
                           ...styles.statusCapsule,
-                          backgroundColor: getStatusColor(order.status),
-                          color: getStatusTextColor(order.status),
+                          backgroundColor: getStatusColor(order.status, order.restock_status),
+                          color: getStatusTextColor(order.status, order.restock_status),
                         }}
                       >
-                        {order.status}
+                        {getDisplayStatus(order.status, order.restock_status)}
                       </span>
                     </td>
                     <td style={styles.td}>
@@ -161,13 +212,25 @@ export default function OrdersList({ shop, onClose }) {
                        order.campaign_status !== 'Campaign Promise Met' && 
                        order.campaign_status !== 'Campaign Completed' && 
                        order.shopify_order_id ? (
-                        <button
-                          onClick={() => handleMarkCampaignPromiseMet(order.id, order.shopify_order_id)}
-                          disabled={processingRefund === order.id}
-                          style={styles.actionButton}
-                        >
-                          {processingRefund === order.id ? 'Processing...' : 'Mark Campaign Promise Met'}
-                        </button>
+                        <div style={styles.actionContainer}>
+                          <label style={styles.checkboxLabel}>
+                            <input
+                              type="checkbox"
+                              checked={restockCheckboxes[order.id] || false}
+                              onChange={(e) => handleRestockCheckboxChange(order.id, e.target.checked)}
+                              disabled={processingRefund === order.id}
+                              style={styles.checkbox}
+                            />
+                            <span style={styles.checkboxText}>Collect product as return</span>
+                          </label>
+                          <button
+                            onClick={() => handleMarkCampaignPromiseMet(order.id, order.shopify_order_id)}
+                            disabled={processingRefund === order.id}
+                            style={styles.actionButton}
+                          >
+                            {processingRefund === order.id ? 'Processing...' : 'Mark Campaign Promise Met'}
+                          </button>
+                        </div>
                       ) : (
                         '-'
                       )}
@@ -289,6 +352,26 @@ const styles = {
     cursor: 'pointer',
     fontWeight: '400',
     letterSpacing: '0.5px',
+    marginTop: '8px',
+  },
+  actionContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+  },
+  checkboxLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontSize: '12px',
+    cursor: 'pointer',
+    userSelect: 'none',
+  },
+  checkbox: {
+    cursor: 'pointer',
+  },
+  checkboxText: {
+    color: '#666',
   },
 };
 

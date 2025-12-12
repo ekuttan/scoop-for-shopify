@@ -28,11 +28,11 @@ router.get('/', async (req, res) => {
 /**
  * POST /api/orders/mark-campaign-promise-met
  * Mark an order as campaign promise met and initiate refund
- * Body: { shop, orderId, shopifyOrderId }
+ * Body: { shop, orderId, shopifyOrderId, shouldRestock }
  */
 router.post('/mark-campaign-promise-met', async (req, res) => {
   try {
-    const { shop, orderId, shopifyOrderId } = req.body;
+    const { shop, orderId, shopifyOrderId, shouldRestock } = req.body;
 
     if (!shop) {
       return res.status(400).json({ error: 'Missing shop parameter' });
@@ -42,7 +42,7 @@ router.post('/mark-campaign-promise-met', async (req, res) => {
       return res.status(400).json({ error: 'Missing shopifyOrderId parameter' });
     }
 
-    const result = await markCampaignPromiseMet(shop, orderId, shopifyOrderId);
+    const result = await markCampaignPromiseMet(shop, orderId, shopifyOrderId, shouldRestock === true);
     res.json(result);
   } catch (error) {
     console.error('Error in mark campaign promise met route:', error);
